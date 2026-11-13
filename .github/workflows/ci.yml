@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality-and-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint and format check
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Type check
+        run: uv run mypy
+
+      - name: Run pytest with coverage gate (>=90%)
+        run: uv run pytest --cov --cov-report=term-missing
+
+      - name: Verify training and quality gate (fast mode)
+        run: |
+          uv run python train.py --fast --out /tmp/model.bin --metrics /tmp/metrics.json
+          uv run python scripts/check_metrics.py --metrics /tmp/metrics.json
+
+      - name: Execute notebook with papermill (FAST=1)
+        run: uv run papermill notebook.ipynb /tmp/notebook_out.ipynb -p FAST 1
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    needs: quality-and-tests
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dev dependencies for smoke client
+        run: uv sync --frozen
+
+      - name: Build Docker image
+        run: docker build -t pdm-service .
+
+      - name: Check Docker image size (< 600 MB)
+        run: |
+          SIZE_BYTES=$(docker image inspect pdm-service --format='{{.Size}}')
+          SIZE_MB=$((SIZE_BYTES / 1024 / 1024))
+          echo "Docker image size: ${SIZE_MB} MB"
+          test "${SIZE_MB}" -lt 600
+
+      - name: Run container and smoke test endpoints
+        run: |
+          docker run -d --name pdm_smoke -p 9696:9696 -e PORT=9696 pdm-service
+          trap 'docker rm -f pdm_smoke || true' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:9696/health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          uv run python predict_test.py --url http://localhost:9696
