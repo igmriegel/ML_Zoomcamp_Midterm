@@ -26,12 +26,18 @@ Unplanned milling machine downtime causes costly production halts, scrap parts, 
 - **Data integrity:** 0 missing values, 0 duplicate rows, unique `udi` identifiers, validated with a strict `pandera` schema in [`src/pdm/data.py`](src/pdm/data.py).
 - **Leakage prevention:** `udi`, `product_id`, and all failure mode indicators (`twf`, `hdf`, `pwf`, `osf`, `rnf`) are excluded from model inputs.
 - **Domain-informed derived features** ([`src/pdm/features.py`](src/pdm/features.py)):
-  - `temp_diff_k = process_temperature_k - air_temperature_k` (heat dissipation failure signal)
-  - `power_w = torque_nm * rotational_speed_rpm * (2 * pi / 60)` (mechanical power in Watts)
-  - `strain = tool_wear_min * torque_nm` (overstrain proxy)
+  - `temp_diff_k = process_temperature_k - air_temperature_k` (heat dissipation failure signal, `HDF`)
+  - `power_w = torque_nm * rotational_speed_rpm * (2 * pi / 60)` (mechanical power in Watts, `PWF`)
+  - `strain = tool_wear_min * torque_nm` (overstrain proxy, `OSF`)
+  - `strain_ratio = strain / limit(type)` where `L=11000`, `M=12000`, `H=13000` (normalized overstrain ratio)
+- **Feature ablation (5-fold CV PR-AUC gain from derived features):**
+  - `lightgbm`: `0.7868 -> 0.9036` (`+0.1168`)
+  - `random_forest`: `0.7570 -> 0.9014` (`+0.1443`)
+  - `xgboost`: `0.7813 -> 0.8858` (`+0.1045`)
+  - `logreg`: `0.4721 -> 0.5036` (`+0.0315`)
 - **Split:** Stratified 60% train / 20% validation / 20% test (`seed=42`).
 
-Full exploratory charts, correlation heatmaps, mutual information, feature ablation, and permutation importance are in [`notebook.ipynb`](notebook.ipynb).
+Full exploratory charts (histograms/KDE, IQR outlier analysis, 2D physical boundaries, correlation heatmap), mutual information, multi-model ablation, PR/ROC curves, expanded permutation importance, and test error analysis are in [`notebook.ipynb`](notebook.ipynb).
 
 ---
 
@@ -41,28 +47,38 @@ Four model families were tuned with `RandomizedSearchCV` over 5-fold stratified 
 
 | Model | CV PR-AUC | Val PR-AUC | Val ROC-AUC | Fit Time (s) |
 |---|---:|---:|---:|---:|
-| **Random Forest** *(winner)* | **0.9097** | **0.8630** | 0.9771 | 75.53 |
-| XGBoost (`xgboost-cpu`) | 0.8983 | 0.8457 | 0.9829 | 10.03 |
-| LightGBM | 0.8948 | 0.8603 | 0.9823 | 13.85 |
-| Logistic Regression *(baseline)* | 0.4995 | 0.4692 | 0.9079 | 4.70 |
+| **LightGBM** *(winner)* | **0.9137** | 0.8708 | 0.9832 | 13.86 |
+| Random Forest | 0.9113 | **0.8735** | 0.9811 | 72.60 |
+| XGBoost (`xgboost-cpu`) | 0.9034 | 0.8525 | **0.9835** | 9.85 |
+| Logistic Regression *(baseline)* | 0.5118 | 0.4633 | 0.9089 | 2.48 |
 
 ### Held-Out Test Set Performance
 
-- **Binary (`machine_failure`, `random_forest` @ `threshold = 0.14`):**
-  - **PR-AUC:** `0.8937` (vs. Logistic Regression baseline `0.4603`)
-  - **ROC-AUC:** `0.9814`
-  - **Recall:** `0.8529` | **Precision:** `0.7250` | **F1:** `0.7838`
-  - **Expected Cost (FN=10, FP=1):** `122.0`
-- **Multi-Label Failure Modes (`MultiOutputClassifier(random_forest)`):**
-  - **Macro PR-AUC:** `0.7667` (vs. mean prevalence `0.0085`)
-  - `hdf`: PR-AUC `0.9809`, Recall `0.8621`
-  - `pwf`: PR-AUC `1.0000`, Recall `1.0000`
-  - `osf`: PR-AUC `1.0000`, Recall `1.0000`
-  - `twf`: PR-AUC `0.0860`, Recall `0.0000` (see Limitations)
+- **Binary (`machine_failure`, `lightgbm` @ `threshold = 0.06`):**
+  - **PR-AUC:** `0.9047` (vs. Logistic Regression baseline `0.4455`)
+  - **ROC-AUC:** `0.9758`
+  - **Recall:** `0.8824` | **Precision:** `0.5556` | **F1:** `0.6818`
+  - **Expected Cost (FN=10, FP=1):** `128.0`
+- **Multi-Label Failure Modes (`MultiOutputClassifier(lightgbm, class_weight="balanced")` with validation-calibrated thresholds):**
+  - **Macro PR-AUC:** `0.7552` (vs. mean prevalence `0.0085`) | **Macro Recall:** `0.9250` | **Macro F1:** `0.7498`
+  - `hdf`: PR-AUC `1.0000`, Recall `1.0000`, F1 `1.0000` (`thr = 0.50`)
+  - `pwf`: PR-AUC `0.9725`, Recall `1.0000`, F1 `0.9630` (`thr = 0.50`)
+  - `osf`: PR-AUC `0.9792`, Recall `1.0000`, F1 `0.9412` (`thr = 0.50`)
+  - `twf`: PR-AUC `0.0691`, Recall `0.7000`, F1 `0.0952` (`thr = 0.05`)
 
 ---
 
 ## 4. Architecture & Project Structure
+
+```mermaid
+flowchart LR
+    A[data/ai4i2020.csv] --> B[Pandera Validation & 60/20/20 Split]
+    B --> C[Physical Features: temp_diff_k, power_w, strain, strain_ratio]
+    C --> D[CV Tuning: LogReg, RF, XGBoost, LightGBM]
+    D --> E[Cost-Optimal Binary & Multi-Label Bundle: models/model.bin]
+    E --> F[FastAPI Service: predict.py]
+    F --> G[Docker Container & Render Cloud]
+```
 
 ```text
 ├── data/                   # Committed AI4I 2020 CSV + data dictionary
@@ -83,20 +99,29 @@ Four model families were tuned with `RandomizedSearchCV` over 5-fold stratified 
 
 ---
 
-## 5. Setup & Installation (`uv` + Python 3.13)
+## 5. Setup & Installation (`uv` or `pip` + Virtual Environment)
 
-Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/) if not already installed, then sync the locked environment:
+Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/) if not already installed, sync the locked environment, and activate `.venv`:
 
-### Linux / macOS
+### Linux / macOS (`uv`)
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync --frozen
+source .venv/bin/activate
 ```
 
-### Windows (PowerShell)
+### Windows (PowerShell, `uv`)
 ```powershell
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 uv sync --frozen
+.venv\Scripts\Activate.ps1
+```
+
+### Alternative (`pip` + standard `venv`, Python >= 3.11)
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
 ---
@@ -174,6 +199,13 @@ Verified against the live deployment:
 uv run python predict_test.py --url https://pdm-ai4i2020.onrender.com
 ```
 
+Example live response (`GET /health` -> HTTP `200`):
+```json
+{"status": "ok", "model_version": "0.1.0", "algorithm": "lightgbm"}
+```
+
+> **Teardown:** To avoid any cloud charges or idle resources, suspend or delete the `pdm-ai4i2020` web service from the Render Dashboard (`Settings -> Suspend Web Service` or `Delete Web Service`).
+
 ---
 
 ## 10. Quality & Testing Harness
@@ -191,5 +223,5 @@ CI (`.github/workflows/ci.yml`) runs linting, type-checking, `pytest` (>= 90% co
 
 ## 11. Limitations & Future Work
 
-- **TWF (Tool Wear Failure) scarcity:** With only 0.50% prevalence in the test set and stochastic tool-wear thresholds in the AI4I 2020 synthetic generator, `twf` recall is low (`0.0000`) without dedicated oversampling or mode-specific threshold tuning.
+- **TWF (Tool Wear Failure) precision-recall trade-off:** With only 0.50% prevalence in the test set and stochastic tool-wear thresholds in the AI4I 2020 synthetic generator, calibrating the `twf` threshold (`0.05`) with `class_weight="balanced"` recovers `0.7000` recall (up from `0.0000`), at the cost of lower per-mode precision (`0.0511`), which is mitigated at inference time because `likely_modes` is only surfaced when the binary model predicts `failure = true`.
 - **Synthetic dataset:** AI4I 2020 is a synthetic benchmark; real-world deployment requires calibration on actual plant telemetry and drift monitoring.
