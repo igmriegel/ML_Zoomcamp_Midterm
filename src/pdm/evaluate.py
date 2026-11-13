@@ -9,6 +9,7 @@ from sklearn.metrics import (
     average_precision_score,
     confusion_matrix,
     f1_score,
+    fbeta_score,
     precision_score,
     recall_score,
     roc_auc_score,
@@ -73,15 +74,48 @@ def binary_metrics(
     }
 
 
+def choose_mode_thresholds(
+    y_true_modes: pd.DataFrame,
+    y_prob_modes: np.ndarray,
+    mode_cols: list[str] = MODE_COLS,
+    beta: float = 1.0,
+) -> dict[str, float]:
+    """Select per-mode probability thresholds maximizing F-beta score on validation."""
+    thresholds = np.linspace(0.05, 0.95, 91)
+    selected: dict[str, float] = {}
+
+    for idx, mode in enumerate(mode_cols):
+        y_m = y_true_modes[mode].to_numpy()
+        p_m = y_prob_modes[:, idx]
+        if int(y_m.sum()) == 0:
+            selected[mode] = 0.5
+            continue
+
+        best_thr = 0.5
+        best_score = -1.0
+        for thr in thresholds:
+            preds = (p_m >= thr).astype(int)
+            score = float(fbeta_score(y_m, preds, beta=beta, zero_division=0))
+            if score > best_score + 1e-12 or (
+                abs(score - best_score) <= 1e-12 and abs(thr - 0.5) < abs(best_thr - 0.5)
+            ):
+                best_score = score
+                best_thr = float(round(float(thr), 2))
+        selected[mode] = best_thr
+
+    return selected
+
+
 def mode_metrics(
     y_true_modes: pd.DataFrame,
     y_prob_modes: np.ndarray,
     thresholds: dict[str, float] | None = None,
     mode_cols: list[str] = MODE_COLS,
 ) -> dict[str, object]:
-    """Compute per-mode and macro PR-AUC / recall for the multi-label model."""
+    """Compute per-mode and macro PR-AUC, F1, precision, and recall."""
     per_mode: dict[str, dict[str, float]] = {}
     pr_aucs: list[float] = []
+    f1s: list[float] = []
     recalls: list[float] = []
     prevalences: list[float] = []
 
@@ -92,21 +126,28 @@ def mode_metrics(
         y_pred = (p_m >= thr).astype(int)
 
         pr_auc = float(average_precision_score(y_m, p_m))
+        f1 = float(f1_score(y_m, y_pred, zero_division=0))
+        prec = float(precision_score(y_m, y_pred, zero_division=0))
         rec = float(recall_score(y_m, y_pred, zero_division=0))
         prev = float(y_m.mean())
 
         per_mode[mode] = {
             "pr_auc": pr_auc,
+            "f1": f1,
+            "precision": prec,
             "recall": rec,
             "prevalence": prev,
+            "threshold": float(thr),
         }
         pr_aucs.append(pr_auc)
+        f1s.append(f1)
         recalls.append(rec)
         prevalences.append(prev)
 
     return {
         "per_mode": per_mode,
         "macro_pr_auc": float(np.mean(pr_aucs)),
+        "macro_f1": float(np.mean(f1s)),
         "macro_recall": float(np.mean(recalls)),
         "mean_prevalence": float(np.mean(prevalences)),
     }

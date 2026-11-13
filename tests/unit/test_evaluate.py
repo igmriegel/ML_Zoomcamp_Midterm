@@ -5,7 +5,13 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from pdm.evaluate import binary_metrics, choose_threshold, expected_cost, mode_metrics
+from pdm.evaluate import (
+    binary_metrics,
+    choose_mode_thresholds,
+    choose_threshold,
+    expected_cost,
+    mode_metrics,
+)
 
 
 def test_expected_cost_weights_fn_and_fp() -> None:
@@ -53,4 +59,27 @@ def test_mode_metrics_computes_per_mode_and_macro() -> None:
     )
     res = mode_metrics(y_modes, y_prob)
     assert res["macro_pr_auc"] == 1.0
+    assert res["macro_f1"] == 1.0
     assert res["macro_recall"] == 1.0
+
+
+def test_choose_mode_thresholds_handles_imbalance_and_empty_class() -> None:
+    y_modes = pd.DataFrame(
+        {
+            "twf": [0, 0, 0, 1],
+            "hdf": [0, 0, 0, 0],  # zero positives edge case
+            "pwf": [0, 0, 1, 0],
+            "osf": [0, 1, 0, 0],
+        }
+    )
+    y_prob = np.array(
+        [
+            [0.05, 0.05, 0.1, 0.1],
+            [0.08, 0.05, 0.1, 0.8],
+            [0.10, 0.05, 0.8, 0.1],
+            [0.22, 0.05, 0.1, 0.1],
+        ]
+    )
+    thrs = choose_mode_thresholds(y_modes, y_prob, beta=1.0)
+    assert thrs["hdf"] == 0.5
+    assert 0.11 <= thrs["twf"] <= 0.22

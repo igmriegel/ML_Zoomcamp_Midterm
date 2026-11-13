@@ -11,7 +11,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.base import clone
+from sklearn.base import BaseEstimator, clone
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
 
 from pdm.config import (
@@ -19,14 +20,13 @@ from pdm.config import (
     COST_FP,
     DATA_PATH,
     METRICS_PATH,
-    MODE_COLS,
     MODEL_PATH,
     MODEL_VERSION,
     RAW_FEATURE_COLS,
     SEED,
 )
 from pdm.data import DatasetSplits, load_raw, split_dataset
-from pdm.evaluate import binary_metrics, choose_threshold, mode_metrics
+from pdm.evaluate import binary_metrics, choose_mode_thresholds, choose_threshold, mode_metrics
 from pdm.model_io import ModelBundle, save_bundle
 from pdm.pipeline import build_mode_pipeline, build_pipeline, get_model_candidates
 
@@ -49,6 +49,16 @@ def _extract_mode_probs(mode_pipe: Any, X: pd.DataFrame) -> np.ndarray:
     return np.column_stack(
         [p[:, 1] if p.shape[1] == 2 else np.zeros(len(p), dtype=float) for p in raw_probs]
     )
+
+
+def _make_mode_estimator(winning_estimator: BaseEstimator) -> BaseEstimator:
+    """Clone winning estimator with class balancing for rare failure modes."""
+    est = clone(winning_estimator)
+    if isinstance(est, RandomForestClassifier):
+        est.set_params(class_weight="balanced_subsample")
+    elif "class_weight" in est.get_params():
+        est.set_params(class_weight="balanced")
+    return est
 
 
 def tune_candidates(
@@ -136,11 +146,15 @@ def train_and_evaluate(
     baseline_pipe = clone(results["logreg"].best_pipeline)
     baseline_pipe.fit(X_train_val, y_train_val)
 
-    # Train multi-label failure mode model using winning estimator family
-    winning_estimator = clone(final_binary.named_steps["model"])
-    final_modes = build_mode_pipeline(winning_estimator)
+    # Train multi-label failure mode model with validation-calibrated thresholds
+    mode_estimator = _make_mode_estimator(final_binary.named_steps["model"])
+    val_modes = build_mode_pipeline(mode_estimator)
+    val_modes.fit(splits.X_train, splits.y_modes_train)
+    val_mode_probs = _extract_mode_probs(val_modes, splits.X_val)
+    mode_thresholds = choose_mode_thresholds(splits.y_modes_val, val_mode_probs, beta=1.0)
+
+    final_modes = build_mode_pipeline(mode_estimator)
     final_modes.fit(X_train_val, y_modes_train_val)
-    mode_thresholds = {mode: 0.5 for mode in MODE_COLS}
 
     # Single final evaluation on held-out test set
     test_probs = final_binary.predict_proba(splits.X_test)[:, 1]
@@ -170,6 +184,7 @@ def train_and_evaluate(
         "fast": fast,
         "winner": winner_family,
         "threshold": threshold,
+        "mode_thresholds": mode_thresholds,
         "candidates_cv": {
             fam: {
                 "cv_pr_auc": res.cv_pr_auc,
