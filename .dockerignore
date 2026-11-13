@@ -13,7 +13,6 @@ train.py
 predict_test.py
 scripts
 data
-README.md
 Makefile
 render.yaml
 .coverage
