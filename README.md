@@ -165,13 +165,13 @@ make docker-smoke
 
 This repository includes [`render.yaml`](render.yaml) for one-click deployment on [Render](https://render.com) (`New -> Blueprint -> Select repository`).
 
-- **Live URL:** _Pending Render connection (`https://<app>.onrender.com`)_
-- **Health check:** `GET /health`
-- **Docs:** `GET /docs`
+- **Live URL:** https://pdm-ai4i2020.onrender.com
+- **Health check:** [`GET /health`](https://pdm-ai4i2020.onrender.com/health)
+- **Docs (Swagger UI):** [`GET /docs`](https://pdm-ai4i2020.onrender.com/docs)
 
-Once deployed, verify against the live URL:
+Verified against the live deployment:
 ```bash
-uv run python predict_test.py --url https://<app>.onrender.com
+uv run python predict_test.py --url https://pdm-ai4i2020.onrender.com
 ```
 
 ---
