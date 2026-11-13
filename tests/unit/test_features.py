@@ -29,6 +29,7 @@ def test_add_features_computes_physical_quantities_and_does_not_mutate() -> None
     assert math.isclose(enriched["temp_diff_k"].iloc[0], 10.0)
     assert math.isclose(enriched["power_w"].iloc[0], 40.0 * 1500.0 * 2.0 * math.pi / 60.0)
     assert math.isclose(enriched["strain"].iloc[0], 400.0)
+    assert math.isclose(enriched["strain_ratio"].iloc[0], 400.0 / 12000.0)
 
 
 def test_preprocessor_drops_leakage_columns() -> None:

@@ -24,7 +24,13 @@ RAW_FEATURE_COLS = [
     "tool_wear_min",
 ]
 
-DERIVED_FEATURE_COLS = ["temp_diff_k", "power_w", "strain"]
+DERIVED_FEATURE_COLS = ["temp_diff_k", "power_w", "strain", "strain_ratio"]
+
+TYPE_STRAIN_LIMITS: dict[str, float] = {
+    "L": 11000.0,
+    "M": 12000.0,
+    "H": 13000.0,
+}
 
 CATEGORICAL_COLS = ["type"]
 NUMERIC_COLS = [
