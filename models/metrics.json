@@ -2,93 +2,112 @@
   "version": "0.1.0",
   "seed": 42,
   "fast": false,
-  "winner": "random_forest",
-  "threshold": 0.14,
+  "winner": "lightgbm",
+  "threshold": 0.06,
+  "mode_thresholds": {
+    "twf": 0.05,
+    "hdf": 0.5,
+    "pwf": 0.5,
+    "osf": 0.5
+  },
   "candidates_cv": {
     "logreg": {
-      "cv_pr_auc": 0.499543405602207,
-      "val_pr_auc": 0.46918453917605246,
-      "val_roc_auc": 0.9078979417854098,
-      "fit_seconds": 4.699,
+      "cv_pr_auc": 0.511765682716338,
+      "val_pr_auc": 0.46327883243135065,
+      "val_roc_auc": 0.9089103032517355,
+      "fit_seconds": 2.479,
       "best_params": {
         "model__class_weight": null,
-        "model__C": 10.0
+        "model__C": 50.0
       }
     },
     "random_forest": {
-      "cv_pr_auc": 0.9097364028665991,
-      "val_pr_auc": 0.8629694281087342,
-      "val_roc_auc": 0.9771267202533189,
-      "fit_seconds": 75.529,
+      "cv_pr_auc": 0.9113053693770269,
+      "val_pr_auc": 0.8735230866580654,
+      "val_roc_auc": 0.9811076604554867,
+      "fit_seconds": 72.598,
       "best_params": {
-        "model__n_estimators": 200,
+        "model__n_estimators": 300,
         "model__min_samples_leaf": 1,
         "model__max_depth": 10,
         "model__class_weight": null
       }
     },
     "xgboost": {
-      "cv_pr_auc": 0.8982567215289954,
-      "val_pr_auc": 0.8457063190211167,
-      "val_roc_auc": 0.982915448788211,
-      "fit_seconds": 10.028,
+      "cv_pr_auc": 0.9034392660706434,
+      "val_pr_auc": 0.852471106012597,
+      "val_roc_auc": 0.983501552795031,
+      "fit_seconds": 9.845,
       "best_params": {
         "model__subsample": 1.0,
         "model__scale_pos_weight": 1.0,
         "model__n_estimators": 100,
-        "model__max_depth": 5,
-        "model__learning_rate": 0.03,
+        "model__max_depth": 3,
+        "model__learning_rate": 0.05,
         "model__colsample_bytree": 1.0
       }
     },
     "lightgbm": {
-      "cv_pr_auc": 0.8948302955471668,
-      "val_pr_auc": 0.8603268276723635,
-      "val_roc_auc": 0.9822912860796492,
-      "fit_seconds": 13.845,
+      "cv_pr_auc": 0.9136686713911665,
+      "val_pr_auc": 0.8708101961578156,
+      "val_roc_auc": 0.9832008890512727,
+      "fit_seconds": 13.861,
       "best_params": {
         "model__num_leaves": 15,
-        "model__n_estimators": 200,
-        "model__min_child_samples": 10,
-        "model__learning_rate": 0.05,
+        "model__n_estimators": 100,
+        "model__min_child_samples": 20,
+        "model__learning_rate": 0.03,
         "model__class_weight": null
       }
     }
   },
   "test_binary": {
-    "pr_auc": 0.8937447047689914,
-    "roc_auc": 0.981366459627329,
-    "f1": 0.7837837837837838,
-    "precision": 0.725,
-    "recall": 0.8529411764705882,
-    "cost": 122.0
+    "pr_auc": 0.9047292176131483,
+    "roc_auc": 0.9757984715625381,
+    "f1": 0.6818181818181818,
+    "precision": 0.5555555555555556,
+    "recall": 0.8823529411764706,
+    "cost": 128.0
   },
-  "baseline_logreg_test_pr_auc": 0.46033493863473274,
+  "baseline_logreg_test_pr_auc": 0.4454839643912101,
   "test_modes": {
     "per_mode": {
       "twf": {
-        "pr_auc": 0.08599457257520515,
-        "recall": 0.0,
-        "prevalence": 0.005
+        "pr_auc": 0.06910959978317807,
+        "f1": 0.09523809523809523,
+        "precision": 0.051094890510948905,
+        "recall": 0.7,
+        "prevalence": 0.005,
+        "threshold": 0.05
       },
       "hdf": {
-        "pr_auc": 0.9809250514359722,
-        "recall": 0.8620689655172413,
-        "prevalence": 0.0145
+        "pr_auc": 1.0,
+        "f1": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "prevalence": 0.0145,
+        "threshold": 0.5
       },
       "pwf": {
-        "pr_auc": 1.0,
+        "pr_auc": 0.9725274725274725,
+        "f1": 0.9629629629629629,
+        "precision": 0.9285714285714286,
         "recall": 1.0,
-        "prevalence": 0.0065
+        "prevalence": 0.0065,
+        "threshold": 0.5
       },
       "osf": {
-        "pr_auc": 1.0,
+        "pr_auc": 0.9791666666666666,
+        "f1": 0.9411764705882353,
+        "precision": 0.8888888888888888,
         "recall": 1.0,
-        "prevalence": 0.008
+        "prevalence": 0.008,
+        "threshold": 0.5
       }
     },
-    "macro_pr_auc": 0.7667299060027943,
-    "macro_recall": 0.7155172413793103,
+    "macro_pr_auc": 0.7552009347443293,
+    "macro_f1": 0.7498443821973233,
+    "macro_recall": 0.925,
     "mean_prevalence": 0.0085
   }
 }
